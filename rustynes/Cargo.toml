@@ -1,0 +1,12 @@
+[package]
+name = "rustynes"
+version = "0.1.0"
+authors = ["Luka Dornhecker <luka.dornhecker@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+librustynes = { version = "0.1.0", path = "../librustynes" }
+log = "0.4.14"
+pretty_env_logger = "0.4.0"
+rand = "0.8.3"
+sdl2 = "0.34.3"
