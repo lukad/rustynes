@@ -1,6 +1,6 @@
 use std::{thread::sleep, time::Duration};
 
-use librustynes::cpu::CPU;
+use librustynes::{Mem, CPU};
 
 use log::*;
 use rand::Rng;

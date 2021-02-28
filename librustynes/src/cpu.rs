@@ -1,6 +1,6 @@
 use log::*;
 
-use crate::instruction::INSTRUCTIONS;
+use crate::{bus::Bus, instruction::INSTRUCTIONS, mem::Mem};
 
 const STACK: u16 = 0x0100;
 
@@ -89,7 +89,7 @@ pub struct CPU {
     pub sp: u8,
     pub status: StatusRegister,
     pub pc: u16,
-    memory: [u8; 0x10000],
+    bus: Bus,
 }
 
 impl Default for CPU {
@@ -101,8 +101,18 @@ impl Default for CPU {
             sp: 0,
             status: Default::default(),
             pc: 0,
-            memory: [0u8; 0x10000],
+            bus: Bus::new(),
         }
+    }
+}
+
+impl Mem for CPU {
+    fn read_byte(&self, addr: u16) -> u8 {
+        self.bus.read_byte(addr)
+    }
+
+    fn write_byte(&mut self, addr: u16, value: u8) {
+        self.bus.write_byte(addr, value);
     }
 }
 
@@ -136,26 +146,26 @@ impl CPU {
         self.pc = self.read_word(0xFFFC);
     }
 
-    pub fn read_byte(&self, addr: u16) -> u8 {
-        self.memory[addr as usize]
-    }
+    // pub fn read_byte(&self, addr: u16) -> u8 {
+    //     self.memory[addr as usize]
+    // }
 
-    pub fn read_word(&self, addr: u16) -> u16 {
-        let lo = self.read_byte(addr) as u16;
-        let hi = self.read_byte(addr + 1) as u16;
-        (hi << 8) | lo
-    }
+    // pub fn read_word(&self, addr: u16) -> u16 {
+    //     let lo = self.read_byte(addr) as u16;
+    //     let hi = self.read_byte(addr + 1) as u16;
+    //     (hi << 8) | lo
+    // }
 
-    pub fn write_byte(&mut self, addr: u16, value: u8) {
-        self.memory[addr as usize] = value;
-    }
+    // pub fn write_byte(&mut self, addr: u16, value: u8) {
+    //     self.memory[addr as usize] = value;
+    // }
 
-    pub fn write_word(&mut self, addr: u16, value: u16) {
-        let lo = (value & 0xFF) as u8;
-        let hi = (value >> 8) as u8;
-        self.write_byte(addr, lo);
-        self.write_byte(addr.wrapping_add(1), hi);
-    }
+    // pub fn write_word(&mut self, addr: u16, value: u16) {
+    //     let lo = (value & 0xFF) as u8;
+    //     let hi = (value >> 8) as u8;
+    //     self.write_byte(addr, lo);
+    //     self.write_byte(addr.wrapping_add(1), hi);
+    // }
 
     fn get_operand_address(&self, mode: &AddressingMode) -> u16 {
         match mode {
