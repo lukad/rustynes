@@ -6,6 +6,10 @@ use lazy_static::lazy_static;
 lazy_static! {
     pub(crate) static ref INSTRUCTION_LIST: Vec<Instruction> = vec![
         Instruction::new(0x00, "BRK", 1, 7, AddressingMode::None),
+        Instruction::new(0x08, "PHP", 1, 3, AddressingMode::None),
+        Instruction::new(0x28, "PLP", 1, 4, AddressingMode::None),
+        Instruction::new(0x48, "PHA", 1, 3, AddressingMode::None),
+        Instruction::new(0x68, "PLA", 1, 4, AddressingMode::None),
         Instruction::new(0x20, "JSR", 3, 6, AddressingMode::Absolute),
         Instruction::new(0x4C, "JMP", 3, 3, AddressingMode::Absolute),
         Instruction::new(0x6C, "JMP", 3, 5, AddressingMode::Relative),

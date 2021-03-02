@@ -1,6 +1,4 @@
-use log::*;
-
-use crate::{bus::Bus, instruction::INSTRUCTIONS, mem::Mem};
+use crate::{bus::Bus, instruction::INSTRUCTIONS, mem::Mem, rom::Rom};
 
 const STACK: u16 = 0x0100;
 
@@ -39,7 +37,7 @@ pub(crate) enum BranchCondition {
     OverflowClear,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct StatusRegister {
     pub carry: bool,
     pub zero: bool,
@@ -69,44 +67,30 @@ impl From<u8> for StatusRegister {
 impl Into<u8> for StatusRegister {
     fn into(self) -> u8 {
         let mut result = 0;
-        result &= self.carry as u8;
-        result &= (self.zero as u8) << 1;
-        result &= (self.disable_interrupts as u8) << 2;
-        result &= (self.decimal as u8) << 3;
-        result &= (self.b1 as u8) << 4;
-        result &= (self.b2 as u8) << 5;
-        result &= (self.overflow as u8) << 6;
-        result &= (self.negative as u8) << 7;
+        result |= self.carry as u8;
+        result |= (self.zero as u8) << 1;
+        result |= (self.disable_interrupts as u8) << 2;
+        result |= (self.decimal as u8) << 3;
+        result |= (self.b1 as u8) << 4;
+        result |= (self.b2 as u8) << 5;
+        result |= (self.overflow as u8) << 6;
+        result |= (self.negative as u8) << 7;
         result
     }
 }
 
 #[derive(Debug)]
-pub struct CPU {
+pub struct CPU<'a> {
     pub register_a: u8,
     pub register_x: u8,
     pub register_y: u8,
     pub sp: u8,
     pub status: StatusRegister,
     pub pc: u16,
-    bus: Bus,
+    bus: Bus<'a>,
 }
 
-impl Default for CPU {
-    fn default() -> Self {
-        Self {
-            register_a: 0,
-            register_x: 0,
-            register_y: 0,
-            sp: 0,
-            status: Default::default(),
-            pc: 0,
-            bus: Bus::new(),
-        }
-    }
-}
-
-impl Mem for CPU {
+impl<'a> Mem for CPU<'a> {
     fn read_byte(&self, addr: u16) -> u8 {
         self.bus.read_byte(addr)
     }
@@ -116,25 +100,106 @@ impl Mem for CPU {
     }
 }
 
-impl CPU {
-    pub fn new() -> Self {
-        Self::default()
+impl<'a> CPU<'a> {
+    pub fn new(rom: Rom<'a>) -> Self {
+        Self {
+            register_a: 0,
+            register_x: 0,
+            register_y: 0,
+            sp: 0,
+            status: Default::default(),
+            pc: 0,
+            bus: Bus::new(rom),
+        }
+    }
+
+    pub fn trace(&self) -> String {
+        let opcode = self.read_byte(self.pc);
+        let instruction = INSTRUCTIONS.get(&opcode).unwrap();
+
+        let hex_dump = ((self.pc)..(self.pc + instruction.len as u16))
+            .into_iter()
+            .map(|addr| format!("{:02X}", self.read_byte(addr)))
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        let param = match instruction.len {
+            1 => match opcode {
+                0x0a | 0x4a | 0x2a | 0x6a => "A".to_string(),
+                _ => "".to_string(),
+            },
+            2 => {
+                let addr = self.read_byte(self.pc + 1);
+                match &instruction.mode {
+                    AddressingMode::Immediate => format!("#${:02X}", addr),
+                    AddressingMode::ZeroPage => {
+                        format!("${:02X} = {:02X}", addr, self.read_byte(addr as u16))
+                    }
+                    AddressingMode::Relative => {
+                        format!(
+                            "${:04X}",
+                            self.pc.wrapping_add(self.read_byte(addr as u16) as u16)
+                        )
+                    }
+                    mode => todo!("{:?}", mode),
+                }
+            }
+            3 => {
+                let addr = self.read_word(self.pc + 1);
+                match &instruction.mode {
+                    AddressingMode::None => unreachable!(),
+                    AddressingMode::Absolute => match opcode {
+                        0x4C => format!("${:04X}", addr),
+                        _ => format!("${:04} = {:02X}", addr, self.read_byte(addr)),
+                    },
+                    //     AddressingMode::Relative
+
+                    // let offset = self.read_byte(self.pc) as i8;
+                    // self.pc.wrapping_add(offset as u16)
+                    // AddressingMode::AbsoluteX => {}
+                    // AddressingMode::AbsoluteY => {}
+                    // AddressingMode::Immediate => {}
+                    // AddressingMode::ZeroPage => {}
+                    // AddressingMode::ZeroPageX => {}
+                    // AddressingMode::ZeroPageY => {}
+                    // AddressingMode::IndirectX => {}
+                    // AddressingMode::IndirectY => {}
+                    // AddressingMode::Relative => {}
+                    mode => todo!("{:?}", mode),
+                }
+            }
+            // 3 => "".to_string(),
+            // _ => "".to_string(),
+            n => todo!("{}", n),
+        };
+
+        let status: u8 = self.status.into();
+        format!(
+            "{:04X}  {:8}  {} {:<32}A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+            self.pc,
+            hex_dump,
+            instruction.mnemonic,
+            param,
+            self.register_a,
+            self.register_x,
+            self.register_y,
+            status,
+            self.sp,
+            // 0, // TODO: use ppu register once implemented
+        )
     }
 
     pub fn load_and_run(&mut self, program: &[u8]) {
         self.load(program);
         self.reset();
+        self.pc = 0x0600;
         self.run();
     }
 
     pub fn load(&mut self, program: &[u8]) {
-        // self.memory[0x8000..(0x8000 + program.len())].copy_from_slice(program);
-        // self.write_word(0xFFFC, 0x8000);
-
-        for i in 0..program.len() as u16 {
-            self.write_byte(0x0600 + i, program[i as usize]);
+        for (i, byte) in program.iter().enumerate() {
+            self.write_byte(0x0600 + i as u16, *byte);
         }
-        self.write_word(0xFFFC, 0x0600);
     }
 
     pub fn reset(&mut self) {
@@ -142,30 +207,9 @@ impl CPU {
         self.register_x = 0;
         self.register_y = 0;
         self.sp = 0xFD;
-        self.status = 0u8.into();
+        self.status = 0b100100u8.into();
         self.pc = self.read_word(0xFFFC);
     }
-
-    // pub fn read_byte(&self, addr: u16) -> u8 {
-    //     self.memory[addr as usize]
-    // }
-
-    // pub fn read_word(&self, addr: u16) -> u16 {
-    //     let lo = self.read_byte(addr) as u16;
-    //     let hi = self.read_byte(addr + 1) as u16;
-    //     (hi << 8) | lo
-    // }
-
-    // pub fn write_byte(&mut self, addr: u16, value: u8) {
-    //     self.memory[addr as usize] = value;
-    // }
-
-    // pub fn write_word(&mut self, addr: u16, value: u16) {
-    //     let lo = (value & 0xFF) as u8;
-    //     let hi = (value >> 8) as u8;
-    //     self.write_byte(addr, lo);
-    //     self.write_byte(addr.wrapping_add(1), hi);
-    // }
 
     fn get_operand_address(&self, mode: &AddressingMode) -> u16 {
         match mode {
@@ -251,6 +295,15 @@ impl CPU {
         let lo = self.pop_byte() as u16;
         let hi = self.pop_byte() as u16;
         hi << 8 | lo
+    }
+
+    fn pla(&mut self) {
+        self.register_a = self.pop_byte();
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn pha(&mut self) {
+        self.push_byte(self.register_a);
     }
 
     fn jmp(&mut self, mode: &AddressingMode) {
@@ -436,24 +489,28 @@ impl CPU {
         F: FnMut(&mut CPU),
     {
         loop {
-            callback(self);
-
             let opcode = self.read_byte(self.pc);
-            self.pc += 1;
-
-            let pc = self.pc;
 
             let instruction = INSTRUCTIONS
                 .get(&opcode)
-                .unwrap_or_else(|| panic!("could not decode opcode {:#X}", opcode));
+                .unwrap_or_else(|| panic!("could not decode opcode {:#04X}", opcode));
 
-            trace!("{:?}", instruction);
+            callback(self);
+
+            self.pc += 1;
+            let pc = self.pc;
 
             match opcode {
                 0x00 => {
                     self.status.b1 = true;
                     return;
                 }
+
+                0x08 => self.push_byte(self.status.into()),
+                0x28 => self.status = self.pop_byte().into(),
+
+                0x48 => self.pha(),
+                0x68 => self.pla(),
 
                 0x4C | 0x6C => self.jmp(&instruction.mode),
                 0x20 => self.jsr(&instruction.mode),

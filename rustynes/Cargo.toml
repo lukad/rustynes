@@ -6,7 +6,8 @@ edition = "2018"
 
 [dependencies]
 librustynes = { version = "0.1.0", path = "../librustynes" }
-log = { version = "0.4.14", features = ["max_level_debug", "release_max_level_warn"] }
+log = { version = "0.4.14", features = ["release_max_level_debug"] }
 pretty_env_logger = "0.4.0"
 rand = "0.8.3"
 sdl2 = "0.34.3"
+# sdl2 = { version = "0.34.3", features = ["static-link", "bundled"] }
