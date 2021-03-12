@@ -130,52 +130,43 @@ impl<'a> CPU<'a> {
             },
             2 => {
                 let addr = self.read_byte(self.pc + 1);
-                match &instruction.mode {
-                    AddressingMode::Immediate => format!("#${:02X}", addr),
-                    AddressingMode::ZeroPage => {
-                        format!("${:02X} = {:02X}", addr, self.read_byte(addr as u16))
-                    }
-                    AddressingMode::Relative => {
-                        format!(
-                            "${:04X}",
-                            self.pc.wrapping_add(self.read_byte(addr as u16) as u16)
-                        )
-                    }
-                    mode => todo!("{:?}", mode),
+                match opcode {
+                    0x20 => "".to_string(),
+                    _ => match &instruction.mode {
+                        AddressingMode::Immediate => format!("#${:02X}", addr),
+                        AddressingMode::ZeroPage => {
+                            format!("${:02X} = {:02X}", addr, self.read_byte(addr as u16))
+                        }
+                        AddressingMode::Relative => {
+                            format!(
+                                "${:04X}",
+                                self.pc.wrapping_add(2).wrapping_add(addr as i8 as u16)
+                            )
+                        }
+                        mode => todo!("{:?}", mode),
+                    },
                 }
             }
             3 => {
                 let addr = self.read_word(self.pc + 1);
-                match &instruction.mode {
-                    AddressingMode::None => unreachable!(),
-                    AddressingMode::Absolute => match opcode {
-                        0x4C => format!("${:04X}", addr),
-                        _ => format!("${:04} = {:02X}", addr, self.read_byte(addr)),
+                match opcode {
+                    0x20 => format!("${:04X}", addr),
+                    _ => match &instruction.mode {
+                        AddressingMode::None => "".to_string(),
+                        AddressingMode::Absolute => match opcode {
+                            0x4C => format!("${:04X}", addr),
+                            _ => format!("${:04} = {:02X}", addr, self.read_byte(addr)),
+                        },
+                        mode => todo!("{:?}", mode),
                     },
-                    //     AddressingMode::Relative
-
-                    // let offset = self.read_byte(self.pc) as i8;
-                    // self.pc.wrapping_add(offset as u16)
-                    // AddressingMode::AbsoluteX => {}
-                    // AddressingMode::AbsoluteY => {}
-                    // AddressingMode::Immediate => {}
-                    // AddressingMode::ZeroPage => {}
-                    // AddressingMode::ZeroPageX => {}
-                    // AddressingMode::ZeroPageY => {}
-                    // AddressingMode::IndirectX => {}
-                    // AddressingMode::IndirectY => {}
-                    // AddressingMode::Relative => {}
-                    mode => todo!("{:?}", mode),
                 }
             }
-            // 3 => "".to_string(),
-            // _ => "".to_string(),
-            n => todo!("{}", n),
+            _ => unreachable!(),
         };
 
         let status: u8 = self.status.into();
         format!(
-            "{:04X}  {:8}  {} {:<32}A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+            "{:04X}  {:8}  {} {:<28}A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
             self.pc,
             hex_dump,
             instruction.mnemonic,
@@ -298,7 +289,7 @@ impl<'a> CPU<'a> {
     }
 
     fn pla(&mut self) {
-        self.register_a = self.pop_byte();
+        self.register_a = self.pop_byte(); // + 0x10;
         self.update_zero_and_negative_flags(self.register_a);
     }
 
@@ -347,10 +338,24 @@ impl<'a> CPU<'a> {
         self.update_zero_and_negative_flags(self.register_a);
     }
 
+    fn ora(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.read_byte(addr);
+        self.register_a |= value;
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
     fn and(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_address(mode);
         let value = self.read_byte(addr);
         self.register_a &= value;
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn eor(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.read_byte(addr);
+        self.register_a ^= value;
         self.update_zero_and_negative_flags(self.register_a);
     }
 
@@ -387,6 +392,10 @@ impl<'a> CPU<'a> {
 
     fn sec(&mut self) {
         self.status.carry = true;
+    }
+
+    fn clv(&mut self) {
+        self.status.overflow = false;
     }
 
     fn cld(&mut self) {
@@ -526,12 +535,21 @@ impl<'a> CPU<'a> {
                     self.sbc(&instruction.mode)
                 }
 
+                0x09 | 0x05 | 0x15 | 0x0D | 0x1D | 0x19 | 0x01 | 0x11 => {
+                    self.ora(&instruction.mode)
+                }
+
                 0x29 | 0x25 | 0x35 | 0x2D | 0x3D | 0x39 | 0x21 | 0x31 => {
                     self.and(&instruction.mode)
                 }
 
+                0x49 | 0x45 | 0x55 | 0x4D | 0x5D | 0x59 | 0x41 | 0x51 => {
+                    self.eor(&instruction.mode)
+                }
+
                 0x18 => self.clc(),
                 0x38 => self.sec(),
+                0xB8 => self.clv(),
                 0xD8 => self.cld(),
                 0xF8 => self.sed(),
                 0x58 => self.cli(),
